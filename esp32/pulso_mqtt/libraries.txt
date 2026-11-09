@@ -1,0 +1,4 @@
+# Bibliotecas usadas pelo Wokwi (uma por linha, nome igual ao do Gerenciador de Bibliotecas)
+LiquidCrystal I2C
+PubSubClient
+DHT sensor library for ESPx

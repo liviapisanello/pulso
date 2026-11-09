@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pulso · Testar MQTT</title>
+  <!--
+    FERRAMENTA DE TESTE (não aparece no vídeo)
+    Faz o papel do ESP32: publica no broker MQTT real as mesmas mensagens
+    do modo demonstração. Abra o painel (index.html) no modo AO VIVO em
+    outra aba ou outro computador e veja os dados chegando pela internet.
+    Também permite enviar uma mensagem escrita à mão.
+  -->
+  <link rel="icon" href="data:,">
+  <style>
+    body { margin: 0; background: #15171C; color: #F3F0E8; font: 16px/1.5 Inter, system-ui, sans-serif; }
+    main { max-width: 980px; margin: 0 auto; padding: 32px 20px; }
+    h1 { font-family: "Space Grotesk", system-ui, sans-serif; margin: 0 0 4px; }
+    p { color: #B7B4AC; margin: 0 0 20px; }
+    section { background: #22262F; border-radius: 16px; padding: 20px; margin-bottom: 18px; }
+    h2 { font-size: 18px; margin: 0 0 12px; }
+    button, select { font: 600 15px Inter, system-ui, sans-serif; color: #F3F0E8; background: #2A2F3A;
+      border: 1px solid #3a4150; border-radius: 10px; padding: 9px 14px; cursor: pointer; margin: 0 6px 6px 0; }
+    button.principal { background: #FF6A3D; border-color: #FF6A3D; color: #15171C; }
+    textarea { width: 100%; min-height: 150px; box-sizing: border-box; background: #15171C; color: #F3F0E8;
+      border: 1px solid #3a4150; border-radius: 10px; padding: 12px; font: 14px ui-monospace, monospace; }
+    #log { height: 300px; overflow: auto; background: #15171C; border-radius: 10px; padding: 12px;
+      font: 13px ui-monospace, monospace; white-space: pre-wrap; color: #B7B4AC; }
+    #log .t { color: #7FB0FF; }
+    #log .l { color: #FF6A3D; }
+    .estado { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 600; margin-left: 8px; }
+    .ok { background: rgba(79,209,139,.15); color: #4FD18B; }
+    .nao { background: rgba(255,79,94,.15); color: #FF4F5E; }
+    code { color: #7FB0FF; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Testar MQTT <span id="estado" class="estado nao">desconectado</span></h1>
+  <p>Este simulador publica no broker <code id="url"></code> como se fosse o ESP32.
+     Abra o <a href="index.html?modo=aovivo" target="_blank" style="color:#7FB0FF">painel no modo ao vivo</a> para ver chegar.</p>
+
+  <section>
+    <h2>1. Roteiro completo (o mesmo da demonstração)</h2>
+    <button class="principal" id="bt-iniciar">Iniciar</button>
+    <button id="bt-pausar">Pausar</button>
+    <button id="bt-reiniciar">Recomeçar do zero</button>
+    <select id="velocidade">
+      <option value="1">velocidade 1x</option>
+      <option value="2">2x</option>
+      <option value="4">4x</option>
+    </select>
+    <p style="margin:8px 0 0;font-size:14px">Dica: em 2x ou 4x a queda de sinal dura menos de 15 s, então o painel não chega a marcar "offline".</p>
+  </section>
+
+  <section>
+    <h2>2. Mensagem escrita à mão</h2>
+    <button id="ex-leitura">Exemplo de leitura</button>
+    <button id="ex-status">Exemplo de status</button>
+    <button id="ex-nulos">Status com sensor falhando</button>
+    <textarea id="json"></textarea>
+    <div style="margin-top:10px">
+      <button class="principal" id="bt-leituras">Publicar em leituras</button>
+      <button class="principal" id="bt-status">Publicar em status</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mensagens publicadas</h2>
+    <div id="log"></div>
+  </section>
+</main>
+
+<script src="config.js"></script>
+<script src="vendor/mqtt.min.js"></script>
+<script>window.Pulso = {};</script>
+<script src="js/simulador.js"></script>
+<script>
+  const CFG = window.PULSO_CONFIG;
+  const $ = (id) => document.getElementById(id);
+  $("url").textContent = CFG.mqtt.url;
+
+  // Conecta ao broker com um id próprio (diferente do painel).
+  const cliente = mqtt.connect(CFG.mqtt.url, {
+    clientId: "pulso-teste-" + Math.random().toString(16).slice(2, 10),
+    reconnectPeriod: 2000,
+  });
+  cliente.on("connect", () => { $("estado").textContent = "conectado"; $("estado").className = "estado ok"; });
+  cliente.on("offline", () => { $("estado").textContent = "desconectado"; $("estado").className = "estado nao"; });
+
+  function registrar(topico, texto) {
+    const log = $("log");
+    const hora = new Date().toLocaleTimeString("pt-BR");
+    const classe = topico.endsWith("leituras") ? "l" : "t";
+    log.insertAdjacentHTML("afterbegin", '<div><span class="' + classe + '">' + hora + " " + topico + "</span>  " +
+      texto.replace(/</g, "&lt;") + "</div>");
+    while (log.children.length > 200) log.lastElementChild.remove();
+  }
+
+  function publicar(tipo, objeto) {
+    const topico = tipo === "leituras" ? CFG.mqtt.topicoLeituras : CFG.mqtt.topicoStatus;
+    const texto = typeof objeto === "string" ? objeto : JSON.stringify(objeto);
+    if (!cliente.connected) { registrar(topico, "(NÃO ENVIADO: sem conexão com o broker) " + texto); return; }
+    cliente.publish(topico, texto, { qos: 0 });
+    registrar(topico, texto);
+  }
+
+  // O mesmo simulador do painel, mas publicando no broker.
+  const sim = Pulso.criarSimulador(CFG, publicar);
+  $("bt-iniciar").onclick = () => sim.iniciar();
+  $("bt-pausar").onclick = () => { const p = sim.alternarPausa(); $("bt-pausar").textContent = p ? "Continuar" : "Pausar"; };
+  $("bt-reiniciar").onclick = () => sim.reiniciar();
+  $("velocidade").onchange = (e) => sim.definirVelocidade(Number(e.target.value));
+
+  // Exemplos para escrever à mão
+  const EXEMPLOS = {
+    leitura: {"dispositivo":"pulso001","trecho":"T02","nome":"R Augusta","passagem":1,"hora":"21:40","temp_c":34.2,"umid":41,"lux":3,"impacto_g":0.12,"pm25":38,"estados":{"calor":"ATENCAO","luz":"CRITICO","pavimento":"NORMAL","ar":"NORMAL"},"enviado_offline":false},
+    status: {"dispositivo":"pulso001","trecho":"T02","hora":"21:40","temp_c":34.2,"lux":3,"impacto_g":0.12,"pm25":38,"geral":"CRITICO","falha_sensor":false,"buffer":0},
+    nulos: {"dispositivo":"pulso001","trecho":"T03","hora":"21:41","temp_c":null,"lux":210,"impacto_g":0.15,"pm25":null,"geral":"FALHA","falha_sensor":true,"buffer":0},
+  };
+  const mostrar = (o) => ($("json").value = JSON.stringify(o, null, 2));
+  $("ex-leitura").onclick = () => mostrar(EXEMPLOS.leitura);
+  $("ex-status").onclick = () => mostrar(EXEMPLOS.status);
+  $("ex-nulos").onclick = () => mostrar(EXEMPLOS.nulos);
+  mostrar(EXEMPLOS.leitura);
+
+  function publicarManual(tipo) {
+    try {
+      const obj = JSON.parse($("json").value);
+      publicar(tipo, JSON.stringify(obj)); // envia compacto, como o ESP32
+    } catch (e) {
+      alert("O texto não é um JSON válido: " + e.message);
+    }
+  }
+  $("bt-leituras").onclick = () => publicarManual("leituras");
+  $("bt-status").onclick = () => publicarManual("status");
+</script>
+</body>
+</html>

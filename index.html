@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pulso · Painel ao vivo</title>
+  <meta name="description" content="Painel de demonstração do Pulso: sensores no teto do ônibus medindo calor, iluminação, pavimento e ar, trecho por trecho.">
+
+  <!-- IBM Plex Sans (texto) + IBM Plex Mono (dados técnicos). Sem internet, o navegador usa fontes parecidas. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%276%27 fill=%27%2315171C%27/%3E%3Cpath d=%27M3 12h3.5l2-5 3.5 11 2.5-8 1.5 2H21%27 fill=%27none%27 stroke=%27%23FF6A3D%27 stroke-width=%272.4%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/estilo.css">
+</head>
+<body class="modo-demo">
+
+  <!-- =============================================================
+       PALCO: área fixa de 1920x1080, ampliada/reduzida para caber
+       na janela (veja js/app.js -> ajustarPalco).
+       ============================================================= -->
+  <div id="palco">
+
+    <!-- ================= CABEÇALHO (56 px) ================= -->
+    <header class="topo">
+      <div class="marca">
+        <span class="marca-traco" data-icone="pulso"></span>
+        <span class="marca-nome">Pulso</span>
+        <span class="marca-linha" id="marca-linha"></span>
+      </div>
+
+      <!-- Telas: teclas 1 a 4 -->
+      <nav class="abas" aria-label="Telas">
+        <button class="aba" data-vista="linha">Linha</button>
+        <button class="aba" data-vista="chamados">Chamados <span class="aba-num" id="contador-chamados"></span></button>
+        <button class="aba" data-vista="registro">Registro</button>
+        <button class="aba" data-vista="cidadao">Cidadão</button>
+      </nav>
+
+      <div class="topo-dir">
+        <span class="modo" id="selo-modo"></span>
+        <div class="conexao" id="status"></div>
+        <span class="relogio" id="relogio-hora">--:--</span>
+
+        <!-- Menu com modos e ações (some no modo gravação) -->
+        <div class="menu so-edicao">
+          <button class="menu-botao" id="menu-botao" aria-label="Menu" aria-expanded="false"><i></i><i></i><i></i></button>
+          <div class="menu-pop oculto" id="menu-pop" role="menu">
+            <p class="menu-titulo">Fonte dos dados</p>
+            <button data-acao="aovivo" role="menuitem"><span>Ao vivo (ESP32)</span><kbd>L</kbd></button>
+            <button data-acao="demo" role="menuitem"><span>Demonstração</span><kbd>D</kbd></button>
+            <p class="menu-titulo">Apresentação</p>
+            <button data-acao="gravacao" role="menuitem"><span>Modo gravação</span><kbd>G</kbd></button>
+            <button data-acao="ajuda" role="menuitem"><span>Atalhos de teclado</span><kbd>H</kbd></button>
+            <button data-acao="zerar" class="perigo" role="menuitem"><span>Zerar tudo</span><kbd>Z Z</kbd></button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ================= TELAS ================= -->
+    <main class="vistas">
+
+      <!-- 1 · LINHA: percurso + detalhe do trecho atual -->
+      <section class="vista vista-linha" id="vista-linha">
+        <div class="percurso">
+          <header class="percurso-cabeca">
+            <h1>Percurso</h1>
+            <p id="percurso-info"></p>
+          </header>
+          <div class="mapa-area" id="mapa"></div>
+          <div class="legenda" id="legenda"></div>
+        </div>
+        <aside class="detalhe" id="agora"></aside>
+      </section>
+
+      <!-- 2 · CHAMADOS -->
+      <section class="vista vista-tabela" id="vista-chamados"></section>
+
+      <!-- 3 · REGISTRO -->
+      <section class="vista vista-tabela" id="vista-registro"></section>
+
+      <!-- 4 · CIDADÃO -->
+      <section class="vista vista-cidadao" id="vista-cidadao">
+        <div class="cid-texto" id="cid-texto"></div>
+        <div class="cid-celular">
+          <div class="celular"><div class="celular-tela" id="celular"></div></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Notificações compactas (novo chamado, reconexão) -->
+    <div class="avisos" id="faixa" aria-live="polite"></div>
+
+    <div id="dica-controle" class="dica-controle so-edicao"></div>
+
+    <!-- Atalhos -->
+    <div id="ajuda" class="ajuda oculto">
+      <div class="ajuda-caixa">
+        <h2>Atalhos de teclado</h2>
+        <dl>
+          <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd></dt><dd>Telas: Linha, Chamados, Registro, Cidadão</dd>
+          <dt><kbd>L</kbd> / <kbd>D</kbd></dt><dd>Modo ao vivo (ESP32) / modo demonstração</dd>
+          <dt><kbd>G</kbd></dt><dd>Modo gravação (esconde menu e cursor)</dd>
+          <dt><kbd>Z</kbd> <kbd>Z</kbd></dt><dd>Zerar tudo (aperte duas vezes)</dd>
+          <dt><kbd>A</kbd></dt><dd>Avança o chamado mais recente: aberto → em atendimento → resolvido</dd>
+          <dt><kbd>Espaço</kbd></dt><dd>Pausa/continua a demonstração</dd>
+          <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>Acelera/desacelera a demonstração</dd>
+          <dt><kbd>S</kbd> / <kbd>F</kbd></dt><dd>Som liga/desliga / tela cheia</dd>
+          <dt><kbd>H</kbd></dt><dd>Mostra/esconde esta ajuda</dd>
+        </dl>
+        <p class="ajuda-nota">Antes de gravar, aperte qualquer tecla: o navegador só libera o som depois disso.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================================================
+       SCRIPTS (a ordem importa: config primeiro, app por último)
+       ============================================================= -->
+  <script src="config.js"></script>
+  <script src="vendor/mqtt.min.js"></script>
+  <script src="js/icones.js"></script>
+  <script src="js/estado.js"></script>
+  <script src="js/processador.js"></script>
+  <script src="js/simulador.js"></script>
+  <script src="js/conexao.js"></script>
+  <script src="js/som.js"></script>
+  <script src="js/mapa.js"></script>
+  <script src="js/paineis.js"></script>
+  <script src="js/cidadao.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
